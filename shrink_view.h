@@ -9,6 +9,7 @@
 class QCheckBox;
 class QPushButton;
 class QLineEdit;
+class QSplitter;
 class LineNumberArea;
 
 class LineNumberedTextEdit : public QPlainTextEdit {
@@ -52,12 +53,16 @@ private slots:
     void clearOutput();
     void saveResult();
     void toggleAllOptions(bool checked);
+    void toggleSidebar();
 
 private:
     void initUi();
     ShrinkOptions getActiveOptions() const;
     void updateDiffHighlighting();
 
+    QWidget* sidebar_widget;
+    QPushButton* btn_toggle_sidebar;
+    
     QLineEdit* file_path_edit;
     QCheckBox* master_check;
     QMap<QString, QCheckBox*> option_checkboxes;

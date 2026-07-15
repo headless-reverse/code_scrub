@@ -119,13 +119,25 @@ ShrinkView::ShrinkView(QWidget *parent) : QWidget(parent) {
 }
 
 void ShrinkView::initUi() {
-    QHBoxLayout* main_layout = new QHBoxLayout(this);
-    main_layout->setContentsMargins(4, 4, 4, 4);
+    QVBoxLayout* top_level_layout = new QVBoxLayout(this);
+    top_level_layout->setContentsMargins(4, 4, 4, 4);
+    top_level_layout->setSpacing(4);
 
-    QWidget* sidebar = new QWidget(this);
-    sidebar->setFixedWidth(240);
-    QVBoxLayout* side_layout = new QVBoxLayout(sidebar);
-    side_layout->setContentsMargins(2, 2, 2, 2);
+    QHBoxLayout* top_bar = new QHBoxLayout();
+    btn_toggle_sidebar = new QPushButton("◀ Ukryj panel opcji", this);
+    btn_toggle_sidebar->setFixedWidth(150);
+    top_bar->addWidget(btn_toggle_sidebar);
+    top_bar->addStretch();
+    top_level_layout->addLayout(top_bar);
+
+    QSplitter* horizontal_splitter = new QSplitter(Qt::Horizontal, this);
+
+    sidebar_widget = new QWidget(this);
+    sidebar_widget->setMinimumWidth(180);
+    sidebar_widget->setMaximumWidth(300);
+    QVBoxLayout* side_layout = new QVBoxLayout(sidebar_widget);
+    side_layout->setContentsMargins(0, 0, 0, 0);
+    side_layout->setSpacing(6);
 
     QPushButton* btn_choose = new QPushButton("Wybierz plik", this);
     file_path_edit = new QLineEdit(this);
@@ -139,16 +151,16 @@ void ShrinkView::initUi() {
     side_layout->addWidget(master_check);
 
     QMap<QString, QString> option_labels = {
-        {"remove_comments", "komentarze"},
-        {"remove_blank", "puste linie"},
+        {"remove_comments", "Komentarze"},
+        {"remove_blank", "Puste linie"},
         {"collapse_blanks", "Redukcja pustych linii"},
         {"remove_docstrings", "Docstringi (Python)"},
-        {"strip_spaces", "spacje końcowe"},
-        {"remove_type_hints", "adnotacje typów (Py)"},
+        {"strip_spaces", "Spacje końcowe"},
+        {"remove_type_hints", "Adnotacje typów (Py)"},
         {"join_multilines", "Połącz łamane linie"},
-        {"merge_imports", "Konsoliduj importy/includes"},
+        {"merge_imports", "Konsoliduj importy"},
         {"inline_functions", "Scal małe funkcje"},
-        {"ultra_shrink", "Ultra Shrink (jedna linia)"}
+        {"ultra_shrink", "Ultra Shrink"}
     };
 
     for (auto it = option_labels.begin(); it != option_labels.end(); ++it) {
@@ -160,31 +172,48 @@ void ShrinkView::initUi() {
 
     btn_shrink = new QPushButton("Shrink", this);
     btn_shrink->setStyleSheet("font-weight: bold;");
-    btn_clear = new QPushButton("wyczyść wynik", this);
-    btn_save = new QPushButton("zapisz", this);
+    btn_clear = new QPushButton("Wyczyść wynik", this);
+    btn_save = new QPushButton("Zapisz", this);
 
     side_layout->addWidget(btn_shrink);
     side_layout->addWidget(btn_clear);
     side_layout->addWidget(btn_save);
     side_layout->addStretch();
 
-    main_layout->addWidget(sidebar);
+    horizontal_splitter->addWidget(sidebar_widget);
 
-    QSplitter* splitter = new QSplitter(Qt::Vertical, this);
+    QSplitter* editors_splitter = new QSplitter(Qt::Vertical, this);
     src_edit = new LineNumberedTextEdit(this);
     src_edit->setPlaceholderText("// Wklej kod Python lub C/C++...");
     dst_edit = new LineNumberedTextEdit(this);
     dst_edit->setPlaceholderText("// Wynik po minifikacji...");
 
-    splitter->addWidget(src_edit);
-    splitter->addWidget(dst_edit);
-    main_layout->addWidget(splitter);
+    editors_splitter->addWidget(src_edit);
+    editors_splitter->addWidget(dst_edit);
+    
+    horizontal_splitter->addWidget(editors_splitter);
+
+    horizontal_splitter->setStretchFactor(0, 1);
+    horizontal_splitter->setStretchFactor(1, 4);
+
+    top_level_layout->addWidget(horizontal_splitter);
 
     connect(btn_choose, &QPushButton::clicked, this, &ShrinkView::chooseFile);
     connect(btn_shrink, &QPushButton::clicked, this, &ShrinkView::doShrink);
     connect(btn_clear, &QPushButton::clicked, this, &ShrinkView::clearOutput);
     connect(btn_save, &QPushButton::clicked, this, &ShrinkView::saveResult);
     connect(master_check, &QCheckBox::clicked, this, &ShrinkView::toggleAllOptions);
+    connect(btn_toggle_sidebar, &QPushButton::clicked, this, &ShrinkView::toggleSidebar);
+}
+
+void ShrinkView::toggleSidebar() {
+    bool is_visible = sidebar_widget->isVisible();
+    sidebar_widget->setVisible(!is_visible);
+    if (!is_visible) {
+        btn_toggle_sidebar->setText("◀ Ukryj panel opcji");
+    } else {
+        btn_toggle_sidebar->setText("▶ Pokaż panel opcji");
+    }
 }
 
 void ShrinkView::toggleAllOptions(bool checked) {
@@ -259,26 +288,17 @@ void ShrinkView::updateDiffHighlighting() {
 
     QSet<QString> originalTrimmedSet;
     for (const QString& line : originalLines) {
-        QString trimmed = line.trimmed();
-        if (!trimmed.isEmpty()) {
-            originalTrimmedSet.insert(trimmed);
-        }
+        originalTrimmedSet.insert(line.trimmed());
     }
 
     QSet<QString> shrunkTrimmedSet;
     for (const QString& line : shrunkLines) {
-        QString trimmed = line.trimmed();
-        if (!trimmed.isEmpty()) {
-            shrunkTrimmedSet.insert(trimmed);
-        }
+        shrunkTrimmedSet.insert(line.trimmed());
     }
 
     QSet<int> removedLines;
     for (int i = 0; i < originalLines.size(); ++i) {
         QString trimmed = originalLines[i].trimmed();
-        if (trimmed.isEmpty()) {
-            continue;
-        }
         if (!shrunkTrimmedSet.contains(trimmed)) {
             removedLines.insert(i);
         }
@@ -287,9 +307,6 @@ void ShrinkView::updateDiffHighlighting() {
     QSet<int> addedLines;
     for (int i = 0; i < shrunkLines.size(); ++i) {
         QString trimmed = shrunkLines[i].trimmed();
-        if (trimmed.isEmpty()) {
-            continue;
-        }
         if (!originalTrimmedSet.contains(trimmed)) {
             addedLines.insert(i);
         }
@@ -311,14 +328,22 @@ void ShrinkView::saveResult() {
         QMessageBox::information(this, "Pusty wynik", "Brak danych do zapisu.");
         return;
     }
-    QString target = QFileDialog::getSaveFileName(this, "Zapisz skurczony kod", "",
-        "Skrypty Pythona (*.py);;Pliki C/C++ (*.cpp *.c *.h *.hpp);;Wszystkie pliki (*.*)");
-    if (!target.isEmpty()) {
-        QFile file(target);
-        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QTextStream out(&file);
-            out << data;
-            QMessageBox::information(this, "Sukces", "Pomyślnie zapisano plik.");
-        }
+
+    QString target = file_path_edit->text();
+    
+    if (target.isEmpty()) {
+        target = QFileDialog::getSaveFileName(this, "Zapisz skurczony kod", "",
+            "Skrypty Pythona (*.py);;Pliki C/C++ (*.cpp *.c *.h *.hpp);;Wszystkie pliki (*.*)");
+        if (target.isEmpty()) return;
+    }
+
+    QFile file(target);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << data;
+        file_path_edit->setText(target);
+        QMessageBox::information(this, "Sukces", "Pomyślnie nadpisano plik:\n" + target);
+    } else {
+        QMessageBox::critical(this, "Błąd", "Nie można otworzyć pliku do zapisu:\n" + target);
     }
 }
