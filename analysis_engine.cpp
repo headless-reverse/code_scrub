@@ -11,9 +11,7 @@ typedef const TSLanguage *(*TSLanguageProvider)(void);
 const TSLanguage* TreeSitterLoader::getCppLanguage() {
     static TSLanguageProvider provider = []() -> TSLanguageProvider {
         QLibrary lib("tree-sitter-cpp");
-        if (lib.load()) {
-            return (TSLanguageProvider)lib.resolve("tree_sitter_cpp");
-        }
+        if (lib.load()) { return (TSLanguageProvider)lib.resolve("tree_sitter_cpp"); }
         return nullptr;
     }();
     return provider ? provider() : nullptr;
@@ -30,22 +28,16 @@ const TSLanguage* TreeSitterLoader::getPythonLanguage() {
     return provider ? provider() : nullptr;
 }
 
-AnalysisEngine::AnalysisEngine() {
-    m_parser = ts_parser_new();
-}
+AnalysisEngine::AnalysisEngine() { m_parser = ts_parser_new(); }
 
 AnalysisEngine::~AnalysisEngine() {
     clearParsedProject();
-    if (m_parser) {
-        ts_parser_delete(m_parser);
-    }
+    if (m_parser) { ts_parser_delete(m_parser); }
 }
 
 void AnalysisEngine::clearParsedProject() {
     for (auto& item : m_parsedProject) {
-        if (item.tree) {
-            ts_tree_delete(item.tree);
-        }
+        if (item.tree) { ts_tree_delete(item.tree); }
     }
     m_parsedProject.clear();
 }
@@ -54,21 +46,15 @@ CodeLanguage AnalysisEngine::detectLanguage(const QString& filePath) {
     QString ext = QFileInfo(filePath).suffix().toLower();
     if (ext == "cpp" || ext == "c" || ext == "cc" || ext == "h" || ext == "hpp" || ext == "cxx" || ext == "hxx") {
         return CodeLanguage::Cpp;
-    } else if (ext == "py") {
-        return CodeLanguage::Python;
-    }
+    } else if (ext == "py") { return CodeLanguage::Python; }
     return CodeLanguage::Unknown;
 }
 
-void AnalysisEngine::setFiles(const QStringList& files) {
-    m_files = files;
-}
+void AnalysisEngine::setFiles(const QStringList& files) { m_files = files; }
 
 void AnalysisEngine::parseFile(const QString& path) {
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return;
-    }
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) { return; }
 
     QByteArray content = file.readAll();
     CodeLanguage lang = detectLanguage(path);
@@ -76,9 +62,7 @@ void AnalysisEngine::parseFile(const QString& path) {
     const TSLanguage* tsLang = nullptr;
     if (lang == CodeLanguage::Cpp) {
         tsLang = TreeSitterLoader::getCppLanguage();
-    } else if (lang == CodeLanguage::Python) {
-        tsLang = TreeSitterLoader::getPythonLanguage();
-    }
+    } else if (lang == CodeLanguage::Python) { tsLang = TreeSitterLoader::getPythonLanguage(); }
 
     TSTree* tree = nullptr;
     if (tsLang && m_parser) {
@@ -116,14 +100,10 @@ bool AnalysisEngine::runAnalysis(std::function<void(int)> progressCallback, std:
         }
     }
 
-    if (!anyASTLoaded) {
-        runFallbackAnalysis(rawDefinitions);
-    }
+    if (!anyASTLoaded) { runFallbackAnalysis(rawDefinitions); }
 
     QVector<ParsedFile> parsedList;
-    for (const auto& pf : m_parsedProject) {
-        parsedList.append(pf);
-    }
+    for (const auto& pf : m_parsedProject) { parsedList.append(pf); }
 
     int totalDefs = rawDefinitions.size();
     m_totalFunctions = totalDefs;
@@ -139,9 +119,7 @@ bool AnalysisEngine::runAnalysis(std::function<void(int)> progressCallback, std:
         if (def.count == 0 && def.signature.section(' ', 1).section('(', 0, 0).trimmed() != "main") {
             def.status = "UNUSED";
             m_unusedFunctions++;
-        } else {
-            def.status = "OK";
-        }
+        } else { def.status = "OK"; }
 
         bool isDuplicate = false;
         for (const auto& other : rawDefinitions) {
@@ -189,9 +167,7 @@ bool AnalysisEngine::runAnalysis(std::function<void(int)> progressCallback, std:
                         }
                     }
                     uint32_t childCount = ts_node_child_count(node);
-                    for (uint32_t c = 0; c < childCount; ++c) {
-                        searchIncludes(ts_node_child(node, c));
-                    }
+                    for (uint32_t c = 0; c < childCount; ++c) { searchIncludes(ts_node_child(node, c)); }
                 };
                 searchIncludes(rootNode);
             } else {
@@ -243,9 +219,7 @@ void AnalysisEngine::runFallbackAnalysis(QVector<FunctionResult>& definitions) {
             QString shortName = fullName.split("::").last();
 
             if (shortName == "if" || shortName == "for" || shortName == "while" ||
-                shortName == "switch" || shortName == "catch" || shortName == "else") {
-                continue;
-            }
+                shortName == "switch" || shortName == "catch" || shortName == "else") { continue; }
 
             int lineNo = raw.left(m.capturedStart(0)).count('\n') + 1;
             FunctionResult res;
@@ -270,13 +244,9 @@ void AnalysisEngine::traverseAndFindFunctions(TSNode node, const ParsedFile& pf,
     bool isFunc = false;
 
     if (pf.lang == CodeLanguage::Cpp) {
-        if (strcmp(nodeType, "function_definition") == 0) {
-            isFunc = true;
-        }
+        if (strcmp(nodeType, "function_definition") == 0) { isFunc = true; }
     } else if (pf.lang == CodeLanguage::Python) {
-        if (strcmp(nodeType, "function_definition") == 0) {
-            isFunc = true;
-        }
+        if (strcmp(nodeType, "function_definition") == 0) { isFunc = true; }
     }
 
     if (isFunc) {
@@ -311,9 +281,7 @@ void AnalysisEngine::traverseAndFindFunctions(TSNode node, const ParsedFile& pf,
 
 void AnalysisEngine::countOccurrences(FunctionResult& def, const QVector<ParsedFile>& allFiles) {
     QString shortName = def.signature.section(' ', 1).section('(', 0, 0).trimmed();
-    if (shortName.contains("::")) {
-        shortName = shortName.split("::").last();
-    }
+    if (shortName.contains("::")) { shortName = shortName.split("::").last(); }
 
     QStringList locations;
     int count = 0;

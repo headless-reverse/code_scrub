@@ -29,17 +29,11 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("Code Scrub");
 
     QSettings settings("SoftwareHouse", "CodeScrub");
-    if (settings.contains("geometry")) {
-        restoreGeometry(settings.value("geometry").toByteArray());
-    }
-    if (settings.contains("windowState")) {
-        restoreState(settings.value("windowState").toByteArray());
-    }
+    if (settings.contains("geometry")) { restoreGeometry(settings.value("geometry").toByteArray()); }
+    if (settings.contains("windowState")) { restoreState(settings.value("windowState").toByteArray()); }
 }
 
-MainWindow::~MainWindow() {
-    cancelAnalysis();
-}
+MainWindow::~MainWindow() { cancelAnalysis(); }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
     QSettings settings("SoftwareHouse", "CodeScrub");
@@ -191,9 +185,7 @@ void MainWindow::loadProject() {
         
         while (it.hasNext()) {
             QString path = it.next();
-            if (!path.contains("/build/") && !path.contains("/.git/") && !path.contains("/cmake-")) {
-                m_files.append(path);
-            }
+            if (!path.contains("/build/") && !path.contains("/.git/") && !path.contains("/cmake-")) { m_files.append(path); }
         }
         stats_label->setText(QString("Załadowano %1 plików.").arg(m_files.size()));
     }
@@ -212,9 +204,7 @@ void MainWindow::runFunctionAnalysis() {
 }
 
 void MainWindow::onFunctionAnalysisFinished(const QVector<FunctionResult>& results, int total, int unused, int duplicates) {
-    for (const auto& r : results) {
-        view_func->addFunctionResult(r);
-    }
+    for (const auto& r : results) { view_func->addFunctionResult(r); }
     toggleButtons(true);
     stats_label->setText(QString("Metody: %1 | Nieużywane: %2 | Duplikaty: %3").arg(total).arg(unused).arg(duplicates));
 }
@@ -232,9 +222,7 @@ void MainWindow::runFileAnalysis() {
 }
 
 void MainWindow::onFileAnalysisFinished(const QVector<FileResult>& results) {
-    for (const auto& r : results) {
-        view_file->addFileResult(r);
-    }
+    for (const auto& r : results) { view_file->addFileResult(r); }
     toggleButtons(true);
     stats_label->setText(QString("Nagłówki/Moduły: %1 przetworzonych plików.").arg(results.size()));
 }
@@ -270,9 +258,7 @@ void MainWindow::updatePreviewFromFile(QTreeWidgetItem* item) {
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QTextStream in(&file);
             preview->setPlainText(in.readAll());
-        } else {
-            preview->setPlainText("// Błąd ładowania pliku.");
-        }
+        } else { preview->setPlainText("// Błąd ładowania pliku."); }
     }
 }
 
