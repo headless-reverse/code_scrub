@@ -1,6 +1,11 @@
+#pragma once
+
 #include <QString>
+#include <QByteArray>
+#include <QVarLengthArray>
 #include <tree_sitter/api.h>
 #include "shrink.h"
+#include "language.h"
 #include "analysis_engine.h"
 
 class ShrinkParser {
@@ -9,6 +14,7 @@ public:
     ~ShrinkParser();
 
     QString process(const ShrinkOptions& opts);
+    QStringList detectUnusedVariables();
 
 private:
     QString m_code;
@@ -18,4 +24,5 @@ private:
     TSTree* m_tree = nullptr;
 
     void executeASTFiltering(TSNode node, const ShrinkOptions& opts, QVarLengthArray<bool>& mask);
+    void performObfuscation(TSNode node, QString& codeText);
 };

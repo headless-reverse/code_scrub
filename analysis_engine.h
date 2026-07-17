@@ -6,12 +6,7 @@
 #include <QMap>
 #include <tree_sitter/api.h>
 #include "check.h"
-
-enum class CodeLanguage {
-    Cpp,
-    Python,
-    Unknown
-};
+#include "language.h"
 
 class TreeSitterLoader {
 public:

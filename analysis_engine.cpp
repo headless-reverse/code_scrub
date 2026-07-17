@@ -36,9 +36,7 @@ AnalysisEngine::~AnalysisEngine() {
 }
 
 void AnalysisEngine::clearParsedProject() {
-    for (auto& item : m_parsedProject) {
-        if (item.tree) { ts_tree_delete(item.tree); }
-    }
+    for (auto& item : m_parsedProject) { if (item.tree) { ts_tree_delete(item.tree); } }
     m_parsedProject.clear();
 }
 

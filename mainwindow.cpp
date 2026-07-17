@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 #include "check_view.h"
 #include "shrink_view.h"
+#include "archive_worker.h"
+#include "clang_analyzer.h"
+#include "analysis_engine.h" 
 #include <QDockWidget>
 #include <QMenuBar>
 #include <QMenu>
@@ -18,9 +21,7 @@
 #include <QTextStream>
 #include <QFileInfo>
 #include <QAction>
-
-#include <archive.h>
-#include <archive_entry.h>
+#include <QTreeWidget>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_funcWorker(nullptr), m_fileWorker(nullptr) {
@@ -56,7 +57,6 @@ void MainWindow::initUi() {
 
 void MainWindow::createMenuBar() {
     menu_bar = menuBar();
-
     menu_files = menu_bar->addMenu("&Files");
     QAction* act_load = menu_files->addAction("Załaduj Projekt...");
     connect(act_load, &QAction::triggered, this, &MainWindow::loadProject);
@@ -85,7 +85,7 @@ void MainWindow::createMenuBar() {
     menu_settings = menu_bar->addMenu("&Settings");
     QAction* act_reset_layout = menu_settings->addAction("Resetuj układ okien");
     connect(act_reset_layout, &QAction::triggered, this, [this]() {
-        if (QMessageBox::question(this, "Reset", "przywrócić domyślny układ paneli?") == QMessageBox::Yes) {
+        if (QMessageBox::question(this, "Reset", "Przywrócić domyślny układ paneli?") == QMessageBox::Yes) {
             QSettings settings("SoftwareHouse", "CodeScrub");
             settings.remove("geometry");
             settings.remove("windowState");
@@ -97,6 +97,7 @@ void MainWindow::createMenuBar() {
     menu_view->addAction(dock_func->toggleViewAction());
     menu_view->addAction(dock_file->toggleViewAction());
     menu_view->addAction(dock_shrink->toggleViewAction());
+    menu_view->addAction(dock_outline->toggleViewAction());
 }
 
 void MainWindow::createToolBar() {
@@ -161,6 +162,13 @@ void MainWindow::createDockWidgets() {
     dock_shrink->setWidget(view_shrink);
     addDockWidget(Qt::BottomDockWidgetArea, dock_shrink);
 
+    dock_outline = new QDockWidget("Hierarchia AST (Outline)", this);
+    dock_outline->setObjectName("dock_outline");
+    view_outline = new QTreeWidget(dock_outline);
+    view_outline->setHeaderLabels({"Struktura", "Typ elementu"});
+    dock_outline->setWidget(view_outline);
+    addDockWidget(Qt::RightDockWidgetArea, dock_outline);
+
     connect(view_func, &FunctionAnalysisView::itemClicked, this, &MainWindow::updatePreviewFromFunc);
     connect(view_file, &FileAnalysisView::itemClicked, this, &MainWindow::updatePreviewFromFile);
 }
@@ -177,7 +185,7 @@ void MainWindow::createStatusBarWidget() {
 }
 
 void MainWindow::loadProject() {
-    QString dir = QFileDialog::getExistingDirectory(this, "katalog projektu C/C++ & Python");
+    QString dir = QFileDialog::getExistingDirectory(this, "Katalog projektu C/C++ & Python");
     if (!dir.isEmpty()) {
         m_files.clear();
         QDirIterator it(dir, QStringList() << "*.cpp" << "*.c" << "*.cc" << "*.h" << "*.hpp" << "*.cxx" << "*.hxx" << "*.py", 
@@ -224,7 +232,7 @@ void MainWindow::runFileAnalysis() {
 void MainWindow::onFileAnalysisFinished(const QVector<FileResult>& results) {
     for (const auto& r : results) { view_file->addFileResult(r); }
     toggleButtons(true);
-    stats_label->setText(QString("Nagłówki/Moduły: %1 przetworzonych plików.").arg(results.size()));
+    stats_label->setText(QString("Pliki: %1 przetworzonych obiektów.").arg(results.size()));
 }
 
 void MainWindow::cancelAnalysis() {
@@ -247,7 +255,12 @@ void MainWindow::toggleButtons(bool enabled) {
 
 void MainWindow::updatePreviewFromFunc(QTreeWidgetItem* item) {
     if (item) {
-        preview->setPlainText(item->data(0, Qt::UserRole).toString());
+        QString rawCode = item->data(0, Qt::UserRole).toString();
+        preview->setPlainText(rawCode);
+
+        CodeLanguage lang = LanguageRegistry::detectFromPath(item->text(1));
+        if (m_highlighter) { delete m_highlighter; m_highlighter = nullptr; }
+        m_highlighter = new AstHighlighter(preview->document(), lang);
     }
 }
 
@@ -256,16 +269,86 @@ void MainWindow::updatePreviewFromFile(QTreeWidgetItem* item) {
         QString path = item->text(5);
         QFile file(path);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&file);
-            preview->setPlainText(in.readAll());
+            QByteArray data = file.readAll();
+            preview->setPlainText(QString::fromUtf8(data));
+
+            CodeLanguage lang = LanguageRegistry::detectFromPath(path);
+            if (m_highlighter) { delete m_highlighter; m_highlighter = nullptr; }
+            m_highlighter = new AstHighlighter(preview->document(), lang);
+
+            buildCodeOutline(path);
+
+            if (lang == CodeLanguage::Cpp) {
+                QVector<ClangDiagnostic> diags = ClangAnalyzer::analyze(path);
+                if (!diags.isEmpty()) {
+                    QString info = QString("\n\n// --- [Ostrzeżenia kompilacji libclang dla pliku %1] ---").arg(QFileInfo(path).fileName());
+                    for (const auto& d : diags) {
+                        info += QString("\n// [%1] Linia %2, Kol %3: %4").arg(d.severity).arg(d.line).arg(d.column).arg(d.text);
+                    }
+                    preview->append(info);
+                }
+            }
         } else { preview->setPlainText("// Błąd ładowania pliku."); }
     }
+}
+
+void MainWindow::buildCodeOutline(const QString& filePath) {
+    view_outline->clear();
+    CodeLanguage lang = LanguageRegistry::detectFromPath(filePath);
+    if (lang == CodeLanguage::Unknown) return;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) return;
+    QByteArray bytes = file.readAll();
+
+    TSParser* parser = ts_parser_new();
+    const TSLanguage* tsLang = (lang == CodeLanguage::Cpp) ? TreeSitterLoader::getCppLanguage() : TreeSitterLoader::getPythonLanguage();
+    if (!tsLang || !parser) {
+        if (parser) ts_parser_delete(parser);
+        return;
+    }
+    ts_parser_set_language(parser, tsLang);
+    TSTree* tree = ts_parser_parse_string(parser, nullptr, bytes.constData(), bytes.size());
+
+    if (tree) {
+        TSNode root = ts_tree_root_node(tree);
+        const LanguageDefinition& def = LanguageRegistry::getDefinition(lang);
+
+        std::function<void(TSNode, QTreeWidgetItem*)> parseNodes = [&](TSNode node, QTreeWidgetItem* parentItem) {
+            const char* type = ts_node_type(node);
+            QTreeWidgetItem* currentItem = parentItem;
+
+            bool isClass = (strcmp(type, def.classNode.toUtf8().constData()) == 0);
+            bool isFunc = (strcmp(type, def.functionNode.toUtf8().constData()) == 0);
+
+            if (isClass || isFunc) {
+                TSNode nameNode = ts_node_child_by_field_name(node, "name", 4);
+                QString nodeName = "unknown";
+                if (!ts_node_is_null(nameNode)) {
+                    uint32_t ns = ts_node_start_byte(nameNode);
+                    uint32_t ne = ts_node_end_byte(nameNode);
+                    nodeName = QString::fromUtf8(bytes.mid(ns, ne - ns));
+                }
+
+                currentItem = new QTreeWidgetItem(parentItem ? parentItem : view_outline->invisibleRootItem());
+                currentItem->setText(0, nodeName);
+                currentItem->setText(1, isClass ? "Klasa" : "Funkcja");
+                currentItem->setExpanded(true);
+            }
+
+            uint32_t childCount = ts_node_child_count(node);
+            for (uint32_t i = 0; i < childCount; ++i) { parseNodes(ts_node_child(node, i), currentItem); }
+        };
+
+        parseNodes(root, nullptr);
+        ts_tree_delete(tree);
+    }
+    ts_parser_delete(parser);
 }
 
 void MainWindow::filterTrees() {
     QString text = search_box->text().toLower();
     QString filter = status_filter->currentText();
-
     view_func->filter(text, filter);
     view_file->filter(text, filter);
 }
@@ -301,45 +384,25 @@ void MainWindow::archiveProject() {
     QString archivePath = QFileDialog::getSaveFileName(this, "Zapisz skompresowane archiwum", "", "Archiwum TAR GZ (*.tar.gz)");
     if (archivePath.isEmpty()) return;
 
-    struct archive* a = archive_write_new();
-    archive_write_add_filter_gzip(a);
-    archive_write_set_format_pax_restricted(a);
+    progress->setValue(0);
+    stats_label->setText("Kompresowanie plików...");
 
-    if (archive_write_open_filename(a, archivePath.toLocal8Bit().constData()) != ARCHIVE_OK) {
-        QMessageBox::critical(this, "Błąd", "Nie można otworzyć archiwum do zapisu.");
-        archive_write_free(a);
-        return;
-    }
+    ArchiveWorker* worker = new ArchiveWorker(m_files, archivePath, this);
+    connect(worker, &ArchiveWorker::progressUpdated, this, &MainWindow::onArchiveProgress);
+    connect(worker, &ArchiveWorker::finished, this, &MainWindow::onArchiveFinished);
+    connect(worker, &ArchiveWorker::finished, worker, &ArchiveWorker::deleteLater);
+    worker->start();
+}
 
-    bool success = true;
-    for (const QString& filePath : m_files) {
-        QFile file(filePath);
-        if (!file.open(QIODevice::ReadOnly)) continue;
-        QByteArray fileData = file.readAll();
+void MainWindow::onArchiveProgress(int percent) { progress->setValue(percent); }
 
-        struct archive_entry* entry = archive_entry_new();
-        QString relativeName = QFileInfo(filePath).fileName();
-        archive_entry_set_pathname(entry, relativeName.toLocal8Bit().constData());
-        archive_entry_set_size(entry, fileData.size());
-        archive_entry_set_filetype(entry, AE_IFREG);
-        archive_entry_set_perm(entry, 0644);
-
-        if (archive_write_header(a, entry) != ARCHIVE_OK) {
-            success = false;
-            archive_entry_free(entry);
-            break;
-        }
-
-        archive_write_data(a, fileData.constData(), fileData.size());
-        archive_entry_free(entry);
-    }
-
-    archive_write_close(a);
-    archive_write_free(a);
-
+void MainWindow::onArchiveFinished(bool success, const QString& msg) {
+    progress->setValue(success ? 100 : 0);
     if (success) {
         QMessageBox::information(this, "Archiwum", "Projekt został skompresowany i zapisany.");
+        stats_label->setText("Kompresowanie ukończone.");
     } else {
-        QMessageBox::warning(this, "Archiwum", "Wystąpiły błędy podczas zapisu plików.");
+        QMessageBox::warning(this, "Archiwum", "Wystąpiły błędy: " + msg);
+        stats_label->setText("Kompresowanie przerwane.");
     }
 }

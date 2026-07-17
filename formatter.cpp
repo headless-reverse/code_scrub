@@ -19,13 +19,10 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
                 buffer.clear();
             }
         }
-        if (!buffer.isEmpty()) {
-            joinedLines.append(buffer);
-        }
+        if (!buffer.isEmpty()) { joinedLines.append(buffer); }
         lines = joinedLines;
     }
 
-// merge_imports
     QRegularExpression cppIncludeRegex(R"(^\s*#include\s*[<"].*[">])");
     QRegularExpression pyImportRegex(R"(^\s*(import\s+[\w\s,]+|from\s+[\w\.]+\s+import\s+[\w\s,\*]+))");
 
@@ -39,22 +36,15 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
         if (opts.merge_imports) {
             if (lang == CodeLanguage::Cpp && cppIncludeRegex.match(trimmed).hasMatch()) {
                 isImport = true;
-            } else if (lang == CodeLanguage::Python && pyImportRegex.match(trimmed).hasMatch()) {
-                isImport = true;
-            }
+            } else if (lang == CodeLanguage::Python && pyImportRegex.match(trimmed).hasMatch()) { isImport = true; }
         }
 
         if (isImport) {
-            if (!collectedImports.contains(trimmed)) {
-                collectedImports.append(trimmed);
-            }
-        } else {
-            structuralLines.append(line);
-        }
+            if (!collectedImports.contains(trimmed)) { collectedImports.append(trimmed); }
+        } else { structuralLines.append(line); }
     }
     lines = structuralLines;
 
-// Usuwanie i redukcja pustych linii / spacje końcowe
     QStringList formatted;
     bool blankSeen = false;
 
@@ -63,9 +53,7 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
         QString trimmed = line.trimmed();
 
         if (trimmed.isEmpty()) {
-            if (opts.remove_blank) {
-                continue;
-            }
+            if (opts.remove_blank) { continue; }
             if (opts.collapse_blanks) {
                 if (blankSeen) continue;
                 blankSeen = true;
@@ -77,16 +65,13 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
         blankSeen = false;
         
         if (opts.strip_spaces) {
-            while (line.endsWith(' ') || line.endsWith('\t') || line.endsWith('\r')) {
-                line.chop(1);
-            }
+            while (line.endsWith(' ') || line.endsWith('\t') || line.endsWith('\r')) { line.chop(1); }
         }
 
         formatted.append(line);
     }
     lines = formatted;
 
-// inline_functions
     if (opts.inline_functions) {
         QStringList inlinedLines;
         for (int i = 0; i < lines.size(); ++i) {
@@ -112,9 +97,7 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
                             isShortFunc = true;
                         } else {
                             QString lineAfter = lines[i + 2];
-                            if (lineAfter.trimmed().isEmpty() || (lineAfter.length() - lineAfter.trimmed().length()) <= indentCurrent) {
-                                isShortFunc = true;
-                            }
+                            if (lineAfter.trimmed().isEmpty() || (lineAfter.length() - lineAfter.trimmed().length()) <= indentCurrent) { isShortFunc = true; }
                         }
 
                         if (isShortFunc && nextLine.trimmed().length() < 60) {
@@ -131,16 +114,12 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
         lines = inlinedLines;
     }
 
-// import na początk pliku
     if (opts.merge_imports && !collectedImports.isEmpty()) {
-        for (int i = collectedImports.size() - 1; i >= 0; --i) {
-            lines.insert(0, collectedImports[i]);
-        }
+        for (int i = collectedImports.size() - 1; i >= 0; --i) { lines.insert(0, collectedImports[i]); }
     }
 
     QString processedText = lines.join("\n");
 
-// Ultra Shrink
     if (opts.ultra_shrink) {
         processedText.replace(QRegularExpression(R"(\s+)"), " ");
         if (lang == CodeLanguage::Cpp) {

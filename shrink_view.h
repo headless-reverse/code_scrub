@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QPlainTextEdit>
+#include <QScrollBar>
 #include <QMap>
 #include <QSet>
 #include "shrink.h"
@@ -11,6 +12,7 @@ class QPushButton;
 class QLineEdit;
 class QSplitter;
 class LineNumberArea;
+class LineNumberedTextEdit;
 
 class LineNumberedTextEdit : public QPlainTextEdit {
     Q_OBJECT
@@ -54,6 +56,9 @@ private slots:
     void saveResult();
     void toggleAllOptions(bool checked);
     void toggleSidebar();
+    void saveProfile();
+    void loadProfile();
+    void onScrollChanged(int val);
 
 private:
     void initUi();
@@ -73,4 +78,8 @@ private:
     QPushButton* btn_shrink;
     QPushButton* btn_clear;
     QPushButton* btn_save;
+    QPushButton* btn_save_prof;
+    QPushButton* btn_load_prof;
+    
+    bool m_isScrolling = false;
 };

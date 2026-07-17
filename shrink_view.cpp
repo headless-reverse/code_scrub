@@ -1,5 +1,6 @@
 #include "shrink_view.h"
 #include "shrink_parser.h"
+#include "ast_highlighter.h"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QGridLayout>
@@ -14,13 +15,12 @@
 #include <QPainter>
 #include <QTextBlock>
 #include <QWheelEvent>
+#include <fstream>
 
 LineNumberedTextEdit::LineNumberedTextEdit(QWidget *parent) : QPlainTextEdit(parent) {
     lineNumberArea = new LineNumberArea(this);
-
     connect(this, &LineNumberedTextEdit::blockCountChanged, this, &LineNumberedTextEdit::updateLineNumberAreaWidth);
     connect(this, &LineNumberedTextEdit::updateRequest, this, &LineNumberedTextEdit::updateLineNumberArea);
-
     updateLineNumberAreaWidth(0);
     setWordWrapMode(QTextOption::NoWrap);
 }
@@ -32,13 +32,10 @@ int LineNumberedTextEdit::lineNumberAreaWidth() {
         max_blocks /= 10;
         digits++;
     }
-    int space = 15 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
-    return space;
+    return 15 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
 }
 
-void LineNumberedTextEdit::updateLineNumberAreaWidth(int) {
-    setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
-}
+void LineNumberedTextEdit::updateLineNumberAreaWidth(int) { setViewportMargins(lineNumberAreaWidth(), 0, 0, 0); }
 
 void LineNumberedTextEdit::updateLineNumberArea(const QRect &rect, int dy) {
     if (dy) {
@@ -46,9 +43,7 @@ void LineNumberedTextEdit::updateLineNumberArea(const QRect &rect, int dy) {
     } else {
         lineNumberArea->update(0, rect.y(), lineNumberArea->width(), rect.height());
     }
-    if (rect.contains(viewport()->rect())) {
-        updateLineNumberAreaWidth(0);
-    }
+    if (rect.contains(viewport()->rect())) { updateLineNumberAreaWidth(0); }
 }
 
 void LineNumberedTextEdit::resizeEvent(QResizeEvent *e) {
@@ -59,16 +54,11 @@ void LineNumberedTextEdit::resizeEvent(QResizeEvent *e) {
 
 void LineNumberedTextEdit::wheelEvent(QWheelEvent *event) {
     if (event->modifiers() & Qt::ControlModifier) {
-        if (event->angleDelta().y() > 0) {
-            zoomIn(1);
-        } else if (event->angleDelta().y() < 0) {
-            zoomOut(1);
-        }
+        if (event->angleDelta().y() > 0) zoomIn(1);
+        else if (event->angleDelta().y() < 0) zoomOut(1);
         updateLineNumberAreaWidth(0);
         event->accept();
-    } else {
-        QPlainTextEdit::wheelEvent(event);
-    }
+    } else { QPlainTextEdit::wheelEvent(event); }
 }
 
 void LineNumberedTextEdit::lineNumberAreaPaintEvent(QPaintEvent *event) {
@@ -84,8 +74,7 @@ void LineNumberedTextEdit::lineNumberAreaPaintEvent(QPaintEvent *event) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             QString number = QString::number(blockNumber + 1);
             painter.setPen(QColor("#787878"));
-            painter.drawText(0, top, lineNumberArea->width() - 5, fontMetrics().height(),
-                             Qt::AlignRight, number);
+            painter.drawText(0, top, lineNumberArea->width() - 5, fontMetrics().height(), Qt::AlignRight, number);
         }
         block = block.next();
         top = bottom;
@@ -110,13 +99,9 @@ void LineNumberedTextEdit::highlightLines(const QSet<int>& lineNumbers, const QC
     setExtraSelections(selections);
 }
 
-void LineNumberedTextEdit::clearHighlighting() {
-    setExtraSelections(QList<QTextEdit::ExtraSelection>());
-}
+void LineNumberedTextEdit::clearHighlighting() { setExtraSelections(QList<QTextEdit::ExtraSelection>()); }
 
-ShrinkView::ShrinkView(QWidget *parent) : QWidget(parent) {
-    initUi();
-}
+ShrinkView::ShrinkView(QWidget *parent) : QWidget(parent) { initUi(); }
 
 void ShrinkView::initUi() {
     QVBoxLayout* top_level_layout = new QVBoxLayout(this);
@@ -160,12 +145,13 @@ void ShrinkView::initUi() {
         {"join_multilines", "Połącz łamane linie"},
         {"merge_imports", "Konsoliduj importy"},
         {"inline_functions", "Scal małe funkcje"},
-        {"ultra_shrink", "Ultra Shrink"}
+        {"ultra_shrink", "Ultra Shrink"},
+        {"obfuscate_locals", "Zmień nazwy lokalne (AST)"}
     };
 
     for (auto it = option_labels.begin(); it != option_labels.end(); ++it) {
         QCheckBox* cb = new QCheckBox(it.value(), this);
-        cb->setChecked(it.key() != "ultra_shrink");
+        cb->setChecked(it.key() != "ultra_shrink" && it.key() != "obfuscate_locals");
         option_checkboxes[it.key()] = cb;
         side_layout->addWidget(cb);
     }
@@ -174,10 +160,15 @@ void ShrinkView::initUi() {
     btn_shrink->setStyleSheet("font-weight: bold;");
     btn_clear = new QPushButton("Wyczyść wynik", this);
     btn_save = new QPushButton("Zapisz", this);
+    
+    btn_save_prof = new QPushButton("Eksportuj Profil (JSON)", this);
+    btn_load_prof = new QPushButton("Importuj Profil (JSON)", this);
 
     side_layout->addWidget(btn_shrink);
     side_layout->addWidget(btn_clear);
     side_layout->addWidget(btn_save);
+    side_layout->addWidget(btn_save_prof);
+    side_layout->addWidget(btn_load_prof);
     side_layout->addStretch();
 
     horizontal_splitter->addWidget(sidebar_widget);
@@ -202,35 +193,39 @@ void ShrinkView::initUi() {
     connect(btn_shrink, &QPushButton::clicked, this, &ShrinkView::doShrink);
     connect(btn_clear, &QPushButton::clicked, this, &ShrinkView::clearOutput);
     connect(btn_save, &QPushButton::clicked, this, &ShrinkView::saveResult);
+    connect(btn_save_prof, &QPushButton::clicked, this, &ShrinkView::saveProfile);
+    connect(btn_load_prof, &QPushButton::clicked, this, &ShrinkView::loadProfile);
     connect(master_check, &QCheckBox::clicked, this, &ShrinkView::toggleAllOptions);
     connect(btn_toggle_sidebar, &QPushButton::clicked, this, &ShrinkView::toggleSidebar);
+
+    connect(src_edit->verticalScrollBar(), &QScrollBar::valueChanged, this, &ShrinkView::onScrollChanged);
+    connect(dst_edit->verticalScrollBar(), &QScrollBar::valueChanged, this, &ShrinkView::onScrollChanged);
+}
+
+void ShrinkView::onScrollChanged(int val) {
+    if (m_isScrolling) return;
+    m_isScrolling = true;
+    src_edit->verticalScrollBar()->setValue(val);
+    dst_edit->verticalScrollBar()->setValue(val);
+    m_isScrolling = false;
 }
 
 void ShrinkView::toggleSidebar() {
     bool is_visible = sidebar_widget->isVisible();
     sidebar_widget->setVisible(!is_visible);
-    if (!is_visible) {
-        btn_toggle_sidebar->setText("◀ Ukryj panel opcji");
-    } else {
-        btn_toggle_sidebar->setText("▶ Pokaż panel opcji");
-    }
+    btn_toggle_sidebar->setText(!is_visible ? "◀ Ukryj panel opcji" : "▶ Pokaż panel opcji");
 }
 
-void ShrinkView::toggleAllOptions(bool checked) {
-    for (auto* cb : option_checkboxes) {
-        cb->setChecked(checked);
-    }
-}
+void ShrinkView::toggleAllOptions(bool checked) { for (auto* cb : option_checkboxes) cb->setChecked(checked); }
 
 void ShrinkView::chooseFile() {
     QString path = QFileDialog::getOpenFileName(this, "Wybierz plik", "",
-        "Pliki źródłowe (*.py *.cpp *.c *.h *.hpp *.cxx *.hxx);;Skrypty Pythona (*.py);;Pliki C/C++ (*.cpp *.c *.h *.hpp);;Wszystkie pliki (*.*)");
+        "Pliki źródłowe (*.py *.cpp *.c *.h *.hpp *.cxx *.hxx);;Wszystkie pliki (*.*)");
     if (!path.isEmpty()) {
         file_path_edit->setText(path);
         QFile file(path);
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&file);
-            src_edit->setPlainText(in.readAll());
+            src_edit->setPlainText(file.readAll());
             src_edit->clearHighlighting();
             dst_edit->clearHighlighting();
         }
@@ -249,21 +244,13 @@ ShrinkOptions ShrinkView::getActiveOptions() const {
     opts.merge_imports = option_checkboxes["merge_imports"]->isChecked();
     opts.inline_functions = option_checkboxes["inline_functions"]->isChecked();
     opts.ultra_shrink = option_checkboxes["ultra_shrink"]->isChecked();
+    opts.obfuscate_locals = option_checkboxes["obfuscate_locals"]->isChecked();
 
     QString path = file_path_edit->text().toLower();
     if (path.endsWith(".cpp") || path.endsWith(".c") || path.endsWith(".h") ||
         path.endsWith(".hpp") || path.endsWith(".cxx") || path.endsWith(".hxx")) {
         opts.lang = ShrinkLanguage::Cpp;
-    } else if (path.endsWith(".py")) {
-        opts.lang = ShrinkLanguage::Python;
-    } else {
-        QString code = src_edit->toPlainText();
-        if (code.contains("#include") || code.contains("using namespace") || (code.contains(";") && !code.contains("def "))) {
-            opts.lang = ShrinkLanguage::Cpp;
-        } else {
-            opts.lang = ShrinkLanguage::Python;
-        }
-    }
+    } else { opts.lang = ShrinkLanguage::Python; }
     return opts;
 }
 
@@ -273,43 +260,69 @@ void ShrinkView::doShrink() {
         QMessageBox::warning(this, "Błąd", "Obszar źródłowy nie może być pusty.");
         return;
     }
-    QString result = shrinkCode(raw_code, getActiveOptions());
+    
+    ShrinkOptions opts = getActiveOptions();
+    QString result = shrinkCode(raw_code, opts);
     dst_edit->setPlainText(result);
     
     updateDiffHighlighting();
 }
 
+void ShrinkView::saveProfile() {
+    QString path = QFileDialog::getSaveFileName(this, "Eksportuj Profil", "", "Profil JSON (*.json)");
+    if (path.isEmpty()) return;
+
+    nlohmann::json j;
+    to_json(j, getActiveOptions());
+
+    std::ofstream file(path.toStdString());
+    if (file.is_open()) {
+        file << j.dump(4);
+        QMessageBox::information(this, "Profil", "Pomyślnie wyeksportowano profil konfiguracji.");
+    }
+}
+
+void ShrinkView::loadProfile() {
+    QString path = QFileDialog::getOpenFileName(this, "Importuj Profil", "", "Profil JSON (*.json)");
+    if (path.isEmpty()) return;
+
+    std::ifstream file(path.toStdString());
+    if (file.is_open()) {
+        nlohmann::json j;
+        file >> j;
+        ShrinkOptions opts;
+        from_json(j, opts);
+
+        option_checkboxes["remove_comments"]->setChecked(opts.remove_comments);
+        option_checkboxes["remove_blank"]->setChecked(opts.remove_blank);
+        option_checkboxes["collapse_blanks"]->setChecked(opts.collapse_blanks);
+        option_checkboxes["remove_docstrings"]->setChecked(opts.remove_docstrings);
+        option_checkboxes["strip_spaces"]->setChecked(opts.strip_spaces);
+        option_checkboxes["remove_type_hints"]->setChecked(opts.remove_type_hints);
+        option_checkboxes["join_multilines"]->setChecked(opts.join_multilines);
+        option_checkboxes["merge_imports"]->setChecked(opts.merge_imports);
+        option_checkboxes["inline_functions"]->setChecked(opts.inline_functions);
+        option_checkboxes["ultra_shrink"]->setChecked(opts.ultra_shrink);
+        option_checkboxes["obfuscate_locals"]->setChecked(opts.obfuscate_locals);
+    }
+}
+
 void ShrinkView::updateDiffHighlighting() {
-    QString originalText = src_edit->toPlainText();
-    QString shrunkText = dst_edit->toPlainText();
+    QStringList originalLines = src_edit->toPlainText().split('\n');
+    QStringList shrunkLines = dst_edit->toPlainText().split('\n');
 
-    QStringList originalLines = originalText.split('\n');
-    QStringList shrunkLines = shrunkText.split('\n');
-
-    QSet<QString> originalTrimmedSet;
-    for (const QString& line : originalLines) {
-        originalTrimmedSet.insert(line.trimmed());
-    }
-
-    QSet<QString> shrunkTrimmedSet;
-    for (const QString& line : shrunkLines) {
-        shrunkTrimmedSet.insert(line.trimmed());
-    }
+    QSet<QString> originalTrimmedSet, shrunkTrimmedSet;
+    for (const QString& line : originalLines) originalTrimmedSet.insert(line.trimmed());
+    for (const QString& line : shrunkLines) shrunkTrimmedSet.insert(line.trimmed());
 
     QSet<int> removedLines;
     for (int i = 0; i < originalLines.size(); ++i) {
-        QString trimmed = originalLines[i].trimmed();
-        if (!shrunkTrimmedSet.contains(trimmed)) {
-            removedLines.insert(i);
-        }
+        if (!shrunkTrimmedSet.contains(originalLines[i].trimmed())) removedLines.insert(i);
     }
 
     QSet<int> addedLines;
     for (int i = 0; i < shrunkLines.size(); ++i) {
-        QString trimmed = shrunkLines[i].trimmed();
-        if (!originalTrimmedSet.contains(trimmed)) {
-            addedLines.insert(i);
-        }
+        if (!originalTrimmedSet.contains(shrunkLines[i].trimmed())) addedLines.insert(i);
     }
 
     src_edit->highlightLines(removedLines, QColor("#ffe6e6"));
@@ -328,22 +341,16 @@ void ShrinkView::saveResult() {
         QMessageBox::information(this, "Pusty wynik", "Brak danych do zapisu.");
         return;
     }
-
     QString target = file_path_edit->text();
-    
     if (target.isEmpty()) {
-        target = QFileDialog::getSaveFileName(this, "Zapisz skurczony kod", "",
-            "Skrypty Pythona (*.py);;Pliki C/C++ (*.cpp *.c *.h *.hpp);;Wszystkie pliki (*.*)");
+        target = QFileDialog::getSaveFileName(this, "Zapisz", "", "Skrypty (*.py);;Źródła (*.cpp *.c)");
         if (target.isEmpty()) return;
     }
-
     QFile file(target);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&file);
         out << data;
         file_path_edit->setText(target);
-        QMessageBox::information(this, "Sukces", "Pomyślnie nadpisano plik:\n" + target);
-    } else {
-        QMessageBox::critical(this, "Błąd", "Nie można otworzyć pliku do zapisu:\n" + target);
+        QMessageBox::information(this, "Sukces", "Zapisano plik.");
     }
 }

@@ -17,9 +17,7 @@ FunctionAnalysisView::FunctionAnalysisView(QWidget* parent) : QWidget(parent) {
     connect(m_tree, &QTreeWidget::itemClicked, this, &FunctionAnalysisView::itemClicked);
 }
 
-void FunctionAnalysisView::clear() {
-    m_tree->clear();
-}
+void FunctionAnalysisView::clear() { m_tree->clear(); }
 
 void FunctionAnalysisView::addFunctionResult(const FunctionResult& res) {
     QTreeWidgetItem* item = new QTreeWidgetItem(m_tree);
@@ -36,9 +34,7 @@ void FunctionAnalysisView::addFunctionResult(const FunctionResult& res) {
         item->setForeground(3, QBrush(QColor("#D32F2F")));
     } else if (res.status == "DUPLICATE") {
         item->setForeground(3, QBrush(QColor("#F57C00")));
-    } else {
-        item->setForeground(3, QBrush(QColor("#388E3C")));
-    }
+    } else { item->setForeground(3, QBrush(QColor("#388E3C"))); }
 }
 
 void FunctionAnalysisView::filter(const QString& text, const QString& statusFilter) {
@@ -66,9 +62,7 @@ FileAnalysisView::FileAnalysisView(QWidget* parent) : QWidget(parent) {
     connect(m_tree, &QTreeWidget::itemClicked, this, &FileAnalysisView::itemClicked);
 }
 
-void FileAnalysisView::clear() {
-    m_tree->clear();
-}
+void FileAnalysisView::clear() { m_tree->clear(); }
 
 void FileAnalysisView::addFileResult(const FileResult& res) {
     QTreeWidgetItem* item = new QTreeWidgetItem(m_tree);
@@ -81,9 +75,7 @@ void FileAnalysisView::addFileResult(const FileResult& res) {
 
     if (res.status == "UNUSED") {
         item->setForeground(2, QBrush(QColor("#D32F2F")));
-    } else {
-        item->setForeground(2, QBrush(QColor("#388E3C")));
-    }
+    } else { item->setForeground(2, QBrush(QColor("#388E3C"))); }
 }
 
 void FileAnalysisView::filter(const QString& text, const QString& statusFilter) {
