@@ -13,9 +13,20 @@ find_package(LibArchive REQUIRED)
 find_path(TREE_SITTER_INCLUDE_DIR NAMES tree_sitter/api.h)
 find_library(TREE_SITTER_LIBRARY NAMES tree-sitter)
 
-if(NOT TREE_SITTER_INCLUDE_DIR OR NOT TREE_SITTER_LIBRARY)
-    message(WARNING "Tree-sitter libraries not found automatically. Please ensure libtree-sitter is installed.")
-endif()
+find_path(CLANG_INCLUDE_DIR NAMES clang-c/Index.h 
+    PATHS 
+        /usr/lib/llvm-19/include 
+        /usr/lib/llvm-21/include
+        /usr/include
+        /usr/local/include
+)
+
+find_library(CLANG_LIBRARY NAMES clang-19 clang-21 clang libclang 
+    PATHS 
+        /usr/lib/llvm-19/lib
+        /usr/lib/llvm-21/lib
+        /usr/lib/x86_64-linux-gnu
+)
 
 set(SOURCES
     main.cpp
@@ -27,6 +38,10 @@ set(SOURCES
     shrink_parser.cpp
     formatter.cpp
     analysis_engine.cpp
+    language.cpp
+    ast_highlighter.cpp
+    archive_worker.cpp
+    clang_analyzer.cpp
 )
 
 set(HEADERS
@@ -38,6 +53,10 @@ set(HEADERS
     shrink_parser.h
     formatter.h
     analysis_engine.h
+    language.h
+    ast_highlighter.h
+    archive_worker.h
+    clang_analyzer.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})
@@ -52,8 +71,18 @@ target_link_libraries(${PROJECT_NAME}
         ${TREE_SITTER_LIBRARY}
 )
 
+if(CLANG_LIBRARY AND CLANG_INCLUDE_DIR)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${CLANG_LIBRARY})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAS_LIBCLANG)
+    message(STATUS "Wykryto libclang: ${CLANG_LIBRARY}")
+    message(STATUS "Katalog naglowkow libclang: ${CLANG_INCLUDE_DIR}")
+else()
+    message(WARNING "Nie odnaleziono pelnego pakietu libclang. Narzedzie Clang Analyzer bedzie dzialac w trybie fallback.")
+endif()
+
 target_include_directories(${PROJECT_NAME} PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${LibArchive_INCLUDE_DIRS}
     ${TREE_SITTER_INCLUDE_DIR}
+    ${CLANG_INCLUDE_DIR}
 )

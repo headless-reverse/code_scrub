@@ -2,6 +2,8 @@
 
 #include <QString>
 #include <QMap>
+#include "language.h"
+#include <nlohmann/json.hpp>
 
 enum class ShrinkLanguage {
     Python,
@@ -20,6 +22,10 @@ struct ShrinkOptions {
     bool merge_imports = true;
     bool inline_functions = true;
     bool ultra_shrink = false;
+    bool obfuscate_locals = false;
 };
+
+void to_json(nlohmann::json& j, const ShrinkOptions& opts);
+void from_json(const nlohmann::json& j, ShrinkOptions& opts);
 
 QString shrinkCode(const QString& code, const ShrinkOptions& opts);
