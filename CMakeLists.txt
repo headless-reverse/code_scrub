@@ -34,6 +34,11 @@ set(SOURCES
     check.cpp
     check_view.cpp
     shrink.cpp
+    shrink_cpp.cpp
+    shrink_factory.cpp
+    shrink_java.cpp
+    shrink_python.cpp
+    shrink_web.cpp
     shrink_view.cpp
     shrink_parser.cpp
     formatter.cpp
@@ -49,6 +54,12 @@ set(HEADERS
     check.h
     check_view.h
     shrink.h
+    shrink_base.h
+    shrink_cpp.h
+    shrink_factory.h
+    shrink_java.h
+    shrink_python.h
+    shrink_web.h
     shrink_view.h
     shrink_parser.h
     formatter.h
@@ -57,6 +68,7 @@ set(HEADERS
     ast_highlighter.h
     archive_worker.h
     clang_analyzer.h
+    language_defs.h
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES} ${HEADERS})

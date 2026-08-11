@@ -1,6 +1,7 @@
 #include "formatter.h"
 #include <QStringList>
 #include <QRegularExpression>
+#include <QMap>
 
 QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, CodeLanguage lang) {
     QStringList lines = source.split(QRegularExpression(R"(\r?\n)"));
@@ -25,6 +26,7 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
 
     QRegularExpression cppIncludeRegex(R"(^\s*#include\s*[<"].*[">])");
     QRegularExpression pyImportRegex(R"(^\s*(import\s+[\w\s,]+|from\s+[\w\.]+\s+import\s+[\w\s,\*]+))");
+    QRegularExpression javaImportRegex(R"(^\s*import\s+(?:static\s+)?[\w.*]+;)");
 
     QStringList collectedImports;
     QStringList structuralLines;
@@ -34,9 +36,10 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
         bool isImport = false;
 
         if (opts.merge_imports) {
-            if (lang == CodeLanguage::Cpp && cppIncludeRegex.match(trimmed).hasMatch()) {
+            if ((lang == CodeLanguage::Cpp || lang == CodeLanguage::C) && cppIncludeRegex.match(trimmed).hasMatch()) {
                 isImport = true;
             } else if (lang == CodeLanguage::Python && pyImportRegex.match(trimmed).hasMatch()) { isImport = true; }
+            else if (lang == CodeLanguage::Java && javaImportRegex.match(trimmed).hasMatch()) { isImport = true; }
         }
 
         if (isImport) {
@@ -76,7 +79,7 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
         QStringList inlinedLines;
         for (int i = 0; i < lines.size(); ++i) {
             QString current = lines[i];
-            if (lang == CodeLanguage::Cpp) {
+            if (lang == CodeLanguage::Cpp || lang == CodeLanguage::C || lang == CodeLanguage::Java || lang == CodeLanguage::JavaScript) {
                 if (current.trimmed().endsWith('{') && i + 2 < lines.size() && lines[i + 2].trimmed() == "}") {
                     QString body = lines[i + 1].trimmed();
                     if (body.length() < 60) {
@@ -120,9 +123,39 @@ QString CodeFormatter::format(const QString& source, const ShrinkOptions& opts, 
 
     QString processedText = lines.join("\n");
 
+    if (opts.minify_imports && lang == CodeLanguage::Java) {
+        processedText.replace(QRegularExpression(R"((?m)^import\s+java\.util\.\w+;\s*\nimport\s+java\.util\.\w+;\s*)"), "import java.util.*;\n");
+    }
+
+    if (opts.minify_markup && lang == CodeLanguage::Html) {
+        processedText.replace(QRegularExpression(R"(>\s+<)"), "><");
+        processedText.replace(QRegularExpression(R"(\s{2,})"), " ");
+    }
+
+    if (opts.minify_css_selectors && lang == CodeLanguage::Css) {
+        processedText.replace(QRegularExpression(R"(\s*([{}:;,>+~])\s*)"), "\\1");
+    }
+
+    if (opts.mangle_js_variables && lang == CodeLanguage::JavaScript) {
+        QMap<QString, QString> renameMap;
+        int counter = 0;
+        QRegularExpression declRegex(R"(\b(?:let|const|var)\s+([A-Za-z_$][\w$]*))");
+        QRegularExpressionMatchIterator it = declRegex.globalMatch(processedText);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch match = it.next();
+            const QString name = match.captured(1);
+            if (!renameMap.contains(name)) {
+                renameMap[name] = QString("v%1").arg(counter++);
+            }
+        }
+        for (auto it = renameMap.constBegin(); it != renameMap.constEnd(); ++it) {
+            processedText.replace(QRegularExpression(R"(\b)" + QRegularExpression::escape(it.key()) + R"(\b)"), it.value());
+        }
+    }
+
     if (opts.ultra_shrink) {
         processedText.replace(QRegularExpression(R"(\s+)"), " ");
-        if (lang == CodeLanguage::Cpp) {
+        if (lang == CodeLanguage::Cpp || lang == CodeLanguage::C || lang == CodeLanguage::Java || lang == CodeLanguage::JavaScript || lang == CodeLanguage::Css) {
             processedText.replace("; ", ";");
             processedText.replace(" { ", "{");
             processedText.replace(" } ", "}");

@@ -8,9 +8,11 @@
 #include "shrink.h"
 
 class QCheckBox;
+class QComboBox;
 class QPushButton;
 class QLineEdit;
 class QSplitter;
+class QStackedWidget;
 class LineNumberArea;
 class LineNumberedTextEdit;
 
@@ -56,6 +58,8 @@ private slots:
     void saveResult();
     void toggleAllOptions(bool checked);
     void toggleSidebar();
+    void onLanguageChanged(int index);
+    void toggleAdvancedOptions(bool checked);
     void saveProfile();
     void loadProfile();
     void onScrollChanged(int val);
@@ -63,14 +67,21 @@ private slots:
 private:
     void initUi();
     ShrinkOptions getActiveOptions() const;
+    CodeLanguage selectedLanguage() const;
+    void setSelectedLanguage(CodeLanguage lang);
+    void updateOptionsPage(CodeLanguage lang);
     void updateDiffHighlighting();
 
     QWidget* sidebar_widget;
     QPushButton* btn_toggle_sidebar;
     
     QLineEdit* file_path_edit;
+    QComboBox* language_combo;
     QCheckBox* master_check;
+    QCheckBox* advanced_check;
+    QStackedWidget* language_options_stack;
     QMap<QString, QCheckBox*> option_checkboxes;
+    QMap<QString, QWidget*> advanced_option_widgets;
     
     LineNumberedTextEdit* src_edit;
     LineNumberedTextEdit* dst_edit;

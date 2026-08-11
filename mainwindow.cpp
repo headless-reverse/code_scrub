@@ -302,7 +302,7 @@ void MainWindow::buildCodeOutline(const QString& filePath) {
     QByteArray bytes = file.readAll();
 
     TSParser* parser = ts_parser_new();
-    const TSLanguage* tsLang = (lang == CodeLanguage::Cpp) ? TreeSitterLoader::getCppLanguage() : TreeSitterLoader::getPythonLanguage();
+    const TSLanguage* tsLang = TreeSitterLoader::getLanguage(lang);
     if (!tsLang || !parser) {
         if (parser) ts_parser_delete(parser);
         return;

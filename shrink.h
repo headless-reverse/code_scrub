@@ -6,8 +6,13 @@
 #include <nlohmann/json.hpp>
 
 enum class ShrinkLanguage {
+    C,
     Python,
-    Cpp
+    Cpp,
+    Java,
+    JavaScript,
+    Html,
+    Css
 };
 
 struct ShrinkOptions {
@@ -23,6 +28,12 @@ struct ShrinkOptions {
     bool inline_functions = true;
     bool ultra_shrink = false;
     bool obfuscate_locals = false;
+    bool remove_pragmas = false;
+    bool remove_annotations = false;
+    bool minify_imports = false;
+    bool minify_markup = false;
+    bool minify_css_selectors = false;
+    bool mangle_js_variables = false;
 };
 
 void to_json(nlohmann::json& j, const ShrinkOptions& opts);
