@@ -2,6 +2,7 @@
 #include <QVarLengthArray>
 #include <QSet>
 #include <QMap>
+#include <QRegularExpression>
 #include <cstring>
 #include <algorithm> 
 
@@ -14,8 +15,18 @@ static QString shrinkFallback(const QString& code, CodeLanguage lang, const Shri
     bool inTripleString = false;
     QString tripleDelimiter;
 
-    if (lang == CodeLanguage::Cpp) {
+    if (lang == CodeLanguage::Cpp || lang == CodeLanguage::C || lang == CodeLanguage::Java ||
+        lang == CodeLanguage::JavaScript || lang == CodeLanguage::Css) {
         while (i < len) {
+            int currentLine = code.left(i).count('\n') + 1;
+            if (opts.excluded_lines.contains(currentLine)) {
+                while (i < len) {
+                    out.append(code[i]);
+                    if (code[i] == '\n') { i++; break; }
+                    i++;
+                }
+                continue;
+            }
             if (inString && code[i] == '\\' && i + 1 < len) {
                 out.append(code[i]); out.append(code[i+1]); i += 2; continue;
             }
@@ -40,8 +51,36 @@ static QString shrinkFallback(const QString& code, CodeLanguage lang, const Shri
             }
             out.append(code[i]); i++;
         }
+    } else if (lang == CodeLanguage::Html) {
+        while (i < len) {
+            int currentLine = code.left(i).count('\n') + 1;
+            if (opts.excluded_lines.contains(currentLine)) {
+                while (i < len) {
+                    out.append(code[i]);
+                    if (code[i] == '\n') { i++; break; }
+                    i++;
+                }
+                continue;
+            }
+            if (opts.remove_comments && i + 3 < len && code.mid(i, 4) == "<!--") {
+                i += 4;
+                while (i + 2 < len && code.mid(i, 3) != "-->") i++;
+                i = qMin(i + 3, len);
+                continue;
+            }
+            out.append(code[i]); i++;
+        }
     } else if (lang == CodeLanguage::Python) {
         while (i < len) {
+            int currentLine = code.left(i).count('\n') + 1;
+            if (opts.excluded_lines.contains(currentLine)) {
+                while (i < len) {
+                    out.append(code[i]);
+                    if (code[i] == '\n') { i++; break; }
+                    i++;
+                }
+                continue;
+            }
             if ((inString || inTripleString) && code[i] == '\\' && i + 1 < len) {
                 out.append(code[i]); out.append(code[i+1]); i += 2; continue;
             }
@@ -77,6 +116,19 @@ static QString shrinkFallback(const QString& code, CodeLanguage lang, const Shri
             out.append(code[i]); i++;
         }
     }
+    if (lang == CodeLanguage::Cpp || lang == CodeLanguage::C) {
+        if (opts.remove_pragmas) {
+            out.remove(QRegularExpression(R"((?m)^\s*#\s*pragma[^\n]*(\n|$))"));
+        }
+    } else if (lang == CodeLanguage::Java) {
+        if (opts.remove_docstrings) {
+            out.remove(QRegularExpression(R"(/\*\*[\s\S]*?\*/)"));
+        }
+        if (opts.remove_annotations) {
+            out.remove(QRegularExpression(R"((?m)^\s*@[\w.]+(?:\([^)]*\))?\s*(\n|$))"));
+        }
+    }
+
     return out;
 }
 
@@ -85,10 +137,7 @@ ShrinkParser::ShrinkParser(const QString& code, CodeLanguage lang)
     m_parser = ts_parser_new();
     m_sourceBytes = code.toUtf8();
 
-    const TSLanguage* tsLang = nullptr;
-    if (m_lang == CodeLanguage::Cpp) {
-        tsLang = TreeSitterLoader::getCppLanguage();
-    } else if (m_lang == CodeLanguage::Python) { tsLang = TreeSitterLoader::getPythonLanguage(); }
+    const TSLanguage* tsLang = TreeSitterLoader::getLanguage(m_lang);
 
     if (tsLang && m_parser) {
         ts_parser_set_language(m_parser, tsLang);
@@ -99,6 +148,11 @@ ShrinkParser::ShrinkParser(const QString& code, CodeLanguage lang)
 ShrinkParser::~ShrinkParser() {
     if (m_tree) ts_tree_delete(m_tree);
     if (m_parser) ts_parser_delete(m_parser);
+}
+
+int ShrinkParser::lineForByte(uint32_t byteOffset) const {
+    if (byteOffset > static_cast<uint32_t>(m_sourceBytes.size())) byteOffset = m_sourceBytes.size();
+    return m_sourceBytes.left(byteOffset).count('\n') + 1;
 }
 
 QString ShrinkParser::process(const ShrinkOptions& opts) {
@@ -135,6 +189,18 @@ void ShrinkParser::executeASTFiltering(TSNode node, const ShrinkOptions& opts, Q
 
     bool eraseNode = false;
     const LanguageDefinition& def = LanguageRegistry::getDefinition(m_lang);
+    const int startLine = lineForByte(sb);
+
+    if (opts.excluded_lines.contains(startLine)) {
+        return;
+    }
+
+    if (opts.remove_unused_functions &&
+        opts.unused_function_lines.contains(startLine) &&
+        !def.functionNode.isEmpty() &&
+        strcmp(type, def.functionNode.toUtf8().constData()) == 0) {
+        eraseNode = true;
+    }
 
     if (strcmp(type, def.commentNode.toUtf8().constData()) == 0 && opts.remove_comments) { eraseNode = true; }
 
@@ -144,6 +210,13 @@ void ShrinkParser::executeASTFiltering(TSNode node, const ShrinkOptions& opts, Q
             if (!ts_node_is_null(child) && strcmp(ts_node_type(child), "string") == 0) { eraseNode = true; }
         }
         if (strcmp(type, "type") == 0 && opts.remove_type_hints) { eraseNode = true; }
+    } else if (m_lang == CodeLanguage::Java) {
+        if (strcmp(type, "comment") == 0 && opts.remove_docstrings) {
+            const QByteArray text = m_sourceBytes.mid(sb, eb - sb);
+            if (text.startsWith("/**")) { eraseNode = true; }
+        }
+        if (strcmp(type, "marker_annotation") == 0 && opts.remove_annotations) { eraseNode = true; }
+        if (strcmp(type, "annotation") == 0 && opts.remove_annotations) { eraseNode = true; }
     }
 
     if (eraseNode) {

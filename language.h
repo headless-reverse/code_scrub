@@ -3,12 +3,7 @@
 #include <QString>
 #include <QStringList>
 #include <QSet>
-
-enum class CodeLanguage {
-    Cpp,
-    Python,
-    Unknown
-};
+#include "language_defs.h"
 
 struct LanguageDefinition {
     CodeLanguage langType;

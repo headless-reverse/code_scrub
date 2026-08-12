@@ -5,27 +5,67 @@
 #include <QLibrary>
 #include <QRegularExpression>
 #include <QDebug>
+#include <map>
 
 typedef const TSLanguage *(*TSLanguageProvider)(void);
 
+struct TreeSitterLanguageSpec {
+    QString libraryName;
+    QString symbolName;
+};
+
+static TreeSitterLanguageSpec treeSitterSpec(CodeLanguage lang) {
+    switch (lang) {
+    case CodeLanguage::C:
+        return {"tree-sitter-c", "tree_sitter_c"};
+    case CodeLanguage::Cpp:
+        return {"tree-sitter-cpp", "tree_sitter_cpp"};
+    case CodeLanguage::Python:
+        return {"tree-sitter-python", "tree_sitter_python"};
+    case CodeLanguage::Java:
+        return {"tree-sitter-java", "tree_sitter_java"};
+    case CodeLanguage::JavaScript:
+        return {"tree-sitter-javascript", "tree_sitter_javascript"};
+    case CodeLanguage::Html:
+        return {"tree-sitter-html", "tree_sitter_html"};
+    case CodeLanguage::Css:
+        return {"tree-sitter-css", "tree_sitter_css"};
+    case CodeLanguage::Unknown:
+        return {};
+    }
+    return {};
+}
+
+struct TreeSitterLanguageHandle {
+    QLibrary library;
+    TSLanguageProvider provider = nullptr;
+    bool attempted = false;
+};
+
+const TSLanguage* TreeSitterLoader::getLanguage(CodeLanguage lang) {
+    static std::map<CodeLanguage, TreeSitterLanguageHandle> handles;
+    TreeSitterLanguageHandle& handle = handles[lang];
+
+    if (!handle.attempted) {
+        handle.attempted = true;
+        const TreeSitterLanguageSpec spec = treeSitterSpec(lang);
+        if (!spec.libraryName.isEmpty()) {
+            handle.library.setFileName(spec.libraryName);
+            if (handle.library.load()) {
+                handle.provider = reinterpret_cast<TSLanguageProvider>(handle.library.resolve(spec.symbolName.toUtf8().constData()));
+            }
+        }
+    }
+
+    return handle.provider ? handle.provider() : nullptr;
+}
+
 const TSLanguage* TreeSitterLoader::getCppLanguage() {
-    static TSLanguageProvider provider = []() -> TSLanguageProvider {
-        QLibrary lib("tree-sitter-cpp");
-        if (lib.load()) { return (TSLanguageProvider)lib.resolve("tree_sitter_cpp"); }
-        return nullptr;
-    }();
-    return provider ? provider() : nullptr;
+    return getLanguage(CodeLanguage::Cpp);
 }
 
 const TSLanguage* TreeSitterLoader::getPythonLanguage() {
-    static TSLanguageProvider provider = []() -> TSLanguageProvider {
-        QLibrary lib("tree-sitter-python");
-        if (lib.load()) {
-            return (TSLanguageProvider)lib.resolve("tree_sitter_python");
-        }
-        return nullptr;
-    }();
-    return provider ? provider() : nullptr;
+    return getLanguage(CodeLanguage::Python);
 }
 
 AnalysisEngine::AnalysisEngine() { m_parser = ts_parser_new(); }
@@ -41,11 +81,7 @@ void AnalysisEngine::clearParsedProject() {
 }
 
 CodeLanguage AnalysisEngine::detectLanguage(const QString& filePath) {
-    QString ext = QFileInfo(filePath).suffix().toLower();
-    if (ext == "cpp" || ext == "c" || ext == "cc" || ext == "h" || ext == "hpp" || ext == "cxx" || ext == "hxx") {
-        return CodeLanguage::Cpp;
-    } else if (ext == "py") { return CodeLanguage::Python; }
-    return CodeLanguage::Unknown;
+    return LanguageRegistry::detectFromPath(filePath);
 }
 
 void AnalysisEngine::setFiles(const QStringList& files) { m_files = files; }
@@ -57,10 +93,7 @@ void AnalysisEngine::parseFile(const QString& path) {
     QByteArray content = file.readAll();
     CodeLanguage lang = detectLanguage(path);
 
-    const TSLanguage* tsLang = nullptr;
-    if (lang == CodeLanguage::Cpp) {
-        tsLang = TreeSitterLoader::getCppLanguage();
-    } else if (lang == CodeLanguage::Python) { tsLang = TreeSitterLoader::getPythonLanguage(); }
+    const TSLanguage* tsLang = TreeSitterLoader::getLanguage(lang);
 
     TSTree* tree = nullptr;
     if (tsLang && m_parser) {
@@ -241,11 +274,8 @@ void AnalysisEngine::traverseAndFindFunctions(TSNode node, const ParsedFile& pf,
     const char* nodeType = ts_node_type(node);
     bool isFunc = false;
 
-    if (pf.lang == CodeLanguage::Cpp) {
-        if (strcmp(nodeType, "function_definition") == 0) { isFunc = true; }
-    } else if (pf.lang == CodeLanguage::Python) {
-        if (strcmp(nodeType, "function_definition") == 0) { isFunc = true; }
-    }
+    const LanguageDefinition& def = LanguageRegistry::getDefinition(pf.lang);
+    if (!def.functionNode.isEmpty() && strcmp(nodeType, def.functionNode.toUtf8().constData()) == 0) { isFunc = true; }
 
     if (isFunc) {
         uint32_t startByte = ts_node_start_byte(node);
@@ -263,7 +293,7 @@ void AnalysisEngine::traverseAndFindFunctions(TSNode node, const ParsedFile& pf,
         }
 
         FunctionResult res;
-        res.signature = (pf.lang == CodeLanguage::Cpp) ? ("void " + shortName + "()") : ("def " + shortName + "()");
+        res.signature = (pf.lang == CodeLanguage::Python) ? ("def " + shortName + "()") : ("void " + shortName + "()");
         res.file = pf.path;
         res.line = lineNo;
         res.context = entireBody;

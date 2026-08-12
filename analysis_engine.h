@@ -10,6 +10,7 @@
 
 class TreeSitterLoader {
 public:
+    static const TSLanguage* getLanguage(CodeLanguage lang);
     static const TSLanguage* getCppLanguage();
     static const TSLanguage* getPythonLanguage();
 };
