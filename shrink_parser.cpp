@@ -18,6 +18,15 @@ static QString shrinkFallback(const QString& code, CodeLanguage lang, const Shri
     if (lang == CodeLanguage::Cpp || lang == CodeLanguage::C || lang == CodeLanguage::Java ||
         lang == CodeLanguage::JavaScript || lang == CodeLanguage::Css) {
         while (i < len) {
+            int currentLine = code.left(i).count('\n') + 1;
+            if (opts.excluded_lines.contains(currentLine)) {
+                while (i < len) {
+                    out.append(code[i]);
+                    if (code[i] == '\n') { i++; break; }
+                    i++;
+                }
+                continue;
+            }
             if (inString && code[i] == '\\' && i + 1 < len) {
                 out.append(code[i]); out.append(code[i+1]); i += 2; continue;
             }
@@ -44,6 +53,15 @@ static QString shrinkFallback(const QString& code, CodeLanguage lang, const Shri
         }
     } else if (lang == CodeLanguage::Html) {
         while (i < len) {
+            int currentLine = code.left(i).count('\n') + 1;
+            if (opts.excluded_lines.contains(currentLine)) {
+                while (i < len) {
+                    out.append(code[i]);
+                    if (code[i] == '\n') { i++; break; }
+                    i++;
+                }
+                continue;
+            }
             if (opts.remove_comments && i + 3 < len && code.mid(i, 4) == "<!--") {
                 i += 4;
                 while (i + 2 < len && code.mid(i, 3) != "-->") i++;
@@ -54,6 +72,15 @@ static QString shrinkFallback(const QString& code, CodeLanguage lang, const Shri
         }
     } else if (lang == CodeLanguage::Python) {
         while (i < len) {
+            int currentLine = code.left(i).count('\n') + 1;
+            if (opts.excluded_lines.contains(currentLine)) {
+                while (i < len) {
+                    out.append(code[i]);
+                    if (code[i] == '\n') { i++; break; }
+                    i++;
+                }
+                continue;
+            }
             if ((inString || inTripleString) && code[i] == '\\' && i + 1 < len) {
                 out.append(code[i]); out.append(code[i+1]); i += 2; continue;
             }
@@ -123,6 +150,11 @@ ShrinkParser::~ShrinkParser() {
     if (m_parser) ts_parser_delete(m_parser);
 }
 
+int ShrinkParser::lineForByte(uint32_t byteOffset) const {
+    if (byteOffset > static_cast<uint32_t>(m_sourceBytes.size())) byteOffset = m_sourceBytes.size();
+    return m_sourceBytes.left(byteOffset).count('\n') + 1;
+}
+
 QString ShrinkParser::process(const ShrinkOptions& opts) {
     if (!m_tree) { return shrinkFallback(m_code, m_lang, opts); }
 
@@ -157,6 +189,18 @@ void ShrinkParser::executeASTFiltering(TSNode node, const ShrinkOptions& opts, Q
 
     bool eraseNode = false;
     const LanguageDefinition& def = LanguageRegistry::getDefinition(m_lang);
+    const int startLine = lineForByte(sb);
+
+    if (opts.excluded_lines.contains(startLine)) {
+        return;
+    }
+
+    if (opts.remove_unused_functions &&
+        opts.unused_function_lines.contains(startLine) &&
+        !def.functionNode.isEmpty() &&
+        strcmp(type, def.functionNode.toUtf8().constData()) == 0) {
+        eraseNode = true;
+    }
 
     if (strcmp(type, def.commentNode.toUtf8().constData()) == 0 && opts.remove_comments) { eraseNode = true; }
 

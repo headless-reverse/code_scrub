@@ -213,6 +213,7 @@ void MainWindow::runFunctionAnalysis() {
 
 void MainWindow::onFunctionAnalysisFinished(const QVector<FunctionResult>& results, int total, int unused, int duplicates) {
     for (const auto& r : results) { view_func->addFunctionResult(r); }
+    view_shrink->setAnalysisResults(results);
     toggleButtons(true);
     stats_label->setText(QString("Metody: %1 | Nieużywane: %2 | Duplikaty: %3").arg(total).arg(unused).arg(duplicates));
 }

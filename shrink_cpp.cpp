@@ -20,7 +20,15 @@ QStringList CppShrinker::getSupportedOptions() const {
         "merge_imports",
         "inline_functions",
         "ultra_shrink",
+        "remove_unused_includes",
+        "remove_debug_logs",
         "remove_pragmas",
+        "remove_line_directives",
+        "remove_unused_functions",
+        "remove_unused_locals",
+        "ternary_converter",
+        "remove_empty_loops",
+        "string_deduplication",
         "obfuscate_locals"
     };
 }

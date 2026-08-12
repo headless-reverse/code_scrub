@@ -5,14 +5,25 @@
 #include <QScrollBar>
 #include <QMap>
 #include <QSet>
+#include <QVector>
 #include "shrink.h"
+#include "check.h"
+
+struct FoldRegion {
+    int startLine = 0;
+    int endLine = 0;
+    bool isFolded = false;
+    QString key;
+};
 
 class QCheckBox;
 class QComboBox;
+class QMouseEvent;
 class QPushButton;
 class QLineEdit;
 class QSplitter;
 class QStackedWidget;
+class QTimer;
 class LineNumberArea;
 class LineNumberedTextEdit;
 
@@ -25,15 +36,28 @@ public:
     
     void highlightLines(const QSet<int>& lineNumbers, const QColor& color);
     void clearHighlighting();
+    int lineFromAreaY(int y);
+    void rebuildFoldRegions(CodeLanguage lang);
+    void toggleFold(int line);
+    void toggleExcludedLine(int line);
+    QSet<int> excludedLines() const { return m_excludedLines; }
 
 protected:
+    void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
 private slots:
     void updateLineNumberAreaWidth(int newBlockCount);
     void updateLineNumberArea(const QRect &rect, int dy);
 private:
+    void applyExtraSelections();
+    void applyFoldVisibility();
+    QString foldKeyForLine(const QStringList& lines, int index) const;
+
     LineNumberArea *lineNumberArea;
+    QList<QTextEdit::ExtraSelection> m_diffSelections;
+    QSet<int> m_excludedLines;
+    QVector<FoldRegion> m_foldRegions;
 };
 
 class LineNumberArea : public QWidget {
@@ -42,6 +66,7 @@ public:
     QSize sizeHint() const override { return QSize(codeEditor->lineNumberAreaWidth(), 0); }
 protected:
     void paintEvent(QPaintEvent *event) override { codeEditor->lineNumberAreaPaintEvent(event); }
+    void mousePressEvent(QMouseEvent *event) override;
 private:
     LineNumberedTextEdit *codeEditor;
 };
@@ -50,6 +75,7 @@ class ShrinkView : public QWidget {
     Q_OBJECT
 public:
     explicit ShrinkView(QWidget *parent = nullptr);
+    void setAnalysisResults(const QVector<FunctionResult>& results);
 
 private slots:
     void chooseFile();
@@ -63,6 +89,7 @@ private slots:
     void saveProfile();
     void loadProfile();
     void onScrollChanged(int val);
+    void refreshEditorStructure();
 
 private:
     void initUi();
@@ -70,6 +97,7 @@ private:
     CodeLanguage selectedLanguage() const;
     void setSelectedLanguage(CodeLanguage lang);
     void updateOptionsPage(CodeLanguage lang);
+    void updateUnusedFunctionLines();
     void updateDiffHighlighting();
 
     QWidget* sidebar_widget;
@@ -91,6 +119,9 @@ private:
     QPushButton* btn_save;
     QPushButton* btn_save_prof;
     QPushButton* btn_load_prof;
+    QTimer* fold_rebuild_timer;
     
     bool m_isScrolling = false;
+    QVector<FunctionResult> m_analysisResults;
+    QSet<int> m_unusedFunctionLines;
 };

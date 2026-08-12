@@ -15,8 +15,16 @@ QStringList JavaShrinker::getSupportedOptions() const {
         "strip_spaces",
         "merge_imports",
         "remove_docstrings",
+        "remove_unused_imports",
+        "remove_final_modifiers",
+        "remove_system_out",
         "remove_annotations",
+        "remove_nonessential_annotations",
         "minify_imports",
+        "remove_unused_functions",
+        "remove_unused_locals",
+        "ternary_converter",
+        "remove_empty_loops",
         "obfuscate_locals"
     };
 }

@@ -17,6 +17,16 @@ QStringList PythonShrinker::getSupportedOptions() const {
         "remove_type_hints",
         "join_multilines",
         "merge_imports",
+        "remove_unused_imports",
+        "remove_pass",
+        "remove_asserts",
+        "remove_prints",
+        "concat_strings",
+        "remove_unused_functions",
+        "remove_unused_locals",
+        "ternary_converter",
+        "remove_empty_loops",
+        "string_deduplication",
         "obfuscate_locals"
     };
 }

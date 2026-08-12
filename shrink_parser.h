@@ -25,4 +25,5 @@ private:
 
     void executeASTFiltering(TSNode node, const ShrinkOptions& opts, QVarLengthArray<bool>& mask);
     void performObfuscation(TSNode node, QString& codeText);
+    int lineForByte(uint32_t byteOffset) const;
 };
